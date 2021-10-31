@@ -216,7 +216,7 @@ struct mtk_pcie_port {
  * @soc: pointer to SoC-dependent operations
  */
 struct mtk_pcie {
-	struct device *dev;
+	struct platform_device *pdev;
 	void __iomem *base;
 	struct regmap *cfg;
 	struct clk *free_ck;
@@ -227,7 +227,7 @@ struct mtk_pcie {
 
 static void mtk_pcie_subsys_powerdown(struct mtk_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 
 	clk_disable_unprepare(pcie->free_ck);
 
@@ -238,7 +238,7 @@ static void mtk_pcie_subsys_powerdown(struct mtk_pcie *pcie)
 static void mtk_pcie_port_free(struct mtk_pcie_port *port)
 {
 	struct mtk_pcie *pcie = port->pcie;
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 
 	devm_iounmap(dev, port->base);
 	list_del(&port->list);
@@ -410,7 +410,7 @@ static void mtk_compose_msi_msg(struct irq_data *data, struct msi_msg *msg)
 
 	msg->data = data->hwirq;
 
-	dev_dbg(port->pcie->dev, "msi#%d address_hi %#x address_lo %#x\n",
+	dev_dbg(&port->pcie->pdev->dev, "msi#%d address_hi %#x address_lo %#x\n",
 		(int)data->hwirq, msg->address_hi, msg->address_lo);
 }
 
@@ -470,7 +470,7 @@ static void mtk_pcie_irq_domain_free(struct irq_domain *domain,
 	mutex_lock(&port->lock);
 
 	if (!test_bit(d->hwirq, port->msi_irq_in_use))
-		dev_err(port->pcie->dev, "trying to free unused MSI#%lu\n",
+		dev_err(&port->pcie->pdev->dev, "trying to free unused MSI#%lu\n",
 			d->hwirq);
 	else
 		__clear_bit(d->hwirq, port->msi_irq_in_use);
@@ -500,21 +500,22 @@ static struct msi_domain_info mtk_msi_domain_info = {
 
 static int mtk_pcie_allocate_msi_domains(struct mtk_pcie_port *port)
 {
-	struct fwnode_handle *fwnode = of_node_to_fwnode(port->pcie->dev->of_node);
+	struct device *dev = &port->pcie->pdev->dev;
+	struct fwnode_handle *fwnode = of_node_to_fwnode(dev->of_node);
 
 	mutex_init(&port->lock);
 
 	port->inner_domain = irq_domain_create_linear(fwnode, MTK_MSI_IRQS_NUM,
 						      &msi_domain_ops, port);
 	if (!port->inner_domain) {
-		dev_err(port->pcie->dev, "failed to create IRQ domain\n");
+		dev_err(dev, "failed to create IRQ domain\n");
 		return -ENOMEM;
 	}
 
 	port->msi_domain = pci_msi_create_irq_domain(fwnode, &mtk_msi_domain_info,
 						     port->inner_domain);
 	if (!port->msi_domain) {
-		dev_err(port->pcie->dev, "failed to create MSI domain\n");
+		dev_err(dev, "failed to create MSI domain\n");
 		irq_domain_remove(port->inner_domain);
 		return -ENOMEM;
 	}
@@ -573,7 +574,7 @@ static const struct irq_domain_ops intx_domain_ops = {
 static int mtk_pcie_init_irq_domain(struct mtk_pcie_port *port,
 				    struct device_node *node)
 {
-	struct device *dev = port->pcie->dev;
+	struct device *dev = &port->pcie->pdev->dev;
 	struct device_node *pcie_intc_node;
 	int ret;
 
@@ -640,7 +641,7 @@ static int mtk_pcie_setup_irq(struct mtk_pcie_port *port,
 			      struct device_node *node)
 {
 	struct mtk_pcie *pcie = port->pcie;
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	struct platform_device *pdev = to_platform_device(dev);
 	int err;
 
@@ -830,7 +831,7 @@ static int mtk_pcie_startup_port(struct mtk_pcie_port *port)
 static void mtk_pcie_enable_port(struct mtk_pcie_port *port)
 {
 	struct mtk_pcie *pcie = port->pcie;
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	int err;
 
 	err = clk_prepare_enable(port->sys_ck);
@@ -913,7 +914,7 @@ static int mtk_pcie_parse_port(struct mtk_pcie *pcie,
 			       int slot)
 {
 	struct mtk_pcie_port *port;
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	struct platform_device *pdev = to_platform_device(dev);
 	char name[10];
 	int err;
@@ -990,7 +991,7 @@ static int mtk_pcie_parse_port(struct mtk_pcie *pcie,
 
 static int mtk_pcie_subsys_powerup(struct mtk_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct resource *regs;
 	struct device_node *cfg_node;
@@ -1041,7 +1042,7 @@ err_free_ck:
 
 static int mtk_pcie_setup(struct mtk_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	struct device_node *node = dev->of_node, *child;
 	struct mtk_pcie_port *port, *tmp;
 	int err, slot;
@@ -1098,7 +1099,7 @@ static int mtk_pcie_probe(struct platform_device *pdev)
 
 	pcie = pci_host_bridge_priv(host);
 
-	pcie->dev = dev;
+	pcie->pdev = pdev;
 	pcie->soc = of_device_get_match_data(dev);
 	platform_set_drvdata(pdev, pcie);
 	INIT_LIST_HEAD(&pcie->ports);
