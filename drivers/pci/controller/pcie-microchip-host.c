@@ -263,8 +263,8 @@ struct mc_msi {
 };
 
 struct mc_port {
+	struct platform_device *pdev;
 	void __iomem *axi_base_addr;
-	struct device *dev;
 	struct irq_domain *intx_domain;
 	struct irq_domain *event_domain;
 	raw_spinlock_t lock;
@@ -406,7 +406,7 @@ static void mc_pcie_enable_msi(struct mc_port *port, void __iomem *base)
 static void mc_handle_msi(struct irq_desc *desc)
 {
 	struct mc_port *port = irq_desc_get_handler_data(desc);
-	struct device *dev = port->dev;
+	struct device *dev = &port->pdev->dev;
 	struct mc_msi *msi = &port->msi;
 	void __iomem *bridge_base_addr =
 		port->axi_base_addr + MC_PCIE_BRIDGE_ADDR;
@@ -450,7 +450,7 @@ static void mc_compose_msi_msg(struct irq_data *data, struct msi_msg *msg)
 	msg->address_hi = upper_32_bits(addr);
 	msg->data = data->hwirq;
 
-	dev_dbg(port->dev, "msi#%x address_hi %#x address_lo %#x\n",
+	dev_dbg(&port->pdev->dev, "msi#%x address_hi %#x address_lo %#x\n",
 		(int)data->hwirq, msg->address_hi, msg->address_lo);
 }
 
@@ -511,7 +511,7 @@ static void mc_irq_msi_domain_free(struct irq_domain *domain, unsigned int virq,
 	if (test_bit(d->hwirq, msi->used))
 		__clear_bit(d->hwirq, msi->used);
 	else
-		dev_err(port->dev, "trying to free unused MSI%lu\n", d->hwirq);
+		dev_err(&port->pdev->dev, "trying to free unused MSI%lu\n", d->hwirq);
 
 	mutex_unlock(&msi->lock);
 }
@@ -536,7 +536,7 @@ static struct msi_domain_info mc_msi_domain_info = {
 
 static int mc_allocate_msi_domains(struct mc_port *port)
 {
-	struct device *dev = port->dev;
+	struct device *dev = &port->pdev->dev;
 	struct fwnode_handle *fwnode = of_node_to_fwnode(dev->of_node);
 	struct mc_msi *msi = &port->msi;
 
@@ -563,7 +563,7 @@ static int mc_allocate_msi_domains(struct mc_port *port)
 static void mc_handle_intx(struct irq_desc *desc)
 {
 	struct mc_port *port = irq_desc_get_handler_data(desc);
-	struct device *dev = port->dev;
+	struct device *dev = &port->pdev->dev;
 	void __iomem *bridge_base_addr =
 		port->axi_base_addr + MC_PCIE_BRIDGE_ADDR;
 	unsigned long status;
@@ -716,7 +716,7 @@ static u32 get_events(struct mc_port *port)
 static irqreturn_t mc_event_handler(int irq, void *dev_id)
 {
 	struct mc_port *port = dev_id;
-	struct device *dev = port->dev;
+	struct device *dev = &port->pdev->dev;
 	struct irq_data *data;
 
 	data = irq_domain_get_irq_data(port->event_domain, irq);
@@ -883,7 +883,7 @@ static int mc_pcie_init_clks(struct device *dev)
 
 static int mc_pcie_init_irq_domains(struct mc_port *port)
 {
-	struct device *dev = port->dev;
+	struct device *dev = &port->pdev->dev;
 	struct device_node *node = dev->of_node;
 	struct device_node *pcie_intc_node;
 
@@ -995,7 +995,7 @@ static int mc_platform_init(struct pci_config_window *cfg)
 	port = devm_kzalloc(dev, sizeof(*port), GFP_KERNEL);
 	if (!port)
 		return -ENOMEM;
-	port->dev = dev;
+	port->pdev = pdev;
 
 	ret = mc_pcie_init_clks(dev);
 	if (ret) {
