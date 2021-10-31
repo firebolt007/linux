@@ -101,8 +101,8 @@
  * @resources: Bus Resources
  */
 struct xilinx_pcie {
+	struct platform_device *pdev;
 	void __iomem *reg_base;
-	struct device *dev;
 	unsigned long msi_map[BITS_TO_LONGS(XILINX_NUM_MSI_IRQS)];
 	struct mutex map_lock;
 	struct irq_domain *msi_domain;
@@ -132,7 +132,7 @@ static inline bool xilinx_pcie_link_up(struct xilinx_pcie *pcie)
  */
 static void xilinx_pcie_clear_err_interrupts(struct xilinx_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	unsigned long val = pcie_read(pcie, XILINX_PCIE_REG_RPEFR);
 
 	if (val & XILINX_PCIE_RPEFR_ERR_VALID) {
@@ -277,20 +277,21 @@ static struct msi_domain_info xilinx_msi_info = {
 
 static int xilinx_allocate_msi_domains(struct xilinx_pcie *pcie)
 {
-	struct fwnode_handle *fwnode = dev_fwnode(pcie->dev);
+	struct device *dev = &pcie->pdev->dev;
+	struct fwnode_handle *fwnode = dev_fwnode(dev);
 	struct irq_domain *parent;
 
 	parent = irq_domain_create_linear(fwnode, XILINX_NUM_MSI_IRQS,
 					  &xilinx_msi_domain_ops, pcie);
 	if (!parent) {
-		dev_err(pcie->dev, "failed to create IRQ domain\n");
+		dev_err(dev, "failed to create IRQ domain\n");
 		return -ENOMEM;
 	}
 	irq_domain_update_bus_token(parent, DOMAIN_BUS_NEXUS);
 
 	pcie->msi_domain = pci_msi_create_irq_domain(fwnode, &xilinx_msi_info, parent);
 	if (!pcie->msi_domain) {
-		dev_err(pcie->dev, "failed to create MSI domain\n");
+		dev_err(dev, "failed to create MSI domain\n");
 		irq_domain_remove(parent);
 		return -ENOMEM;
 	}
@@ -343,7 +344,7 @@ static const struct irq_domain_ops intx_domain_ops = {
 static irqreturn_t xilinx_pcie_intr_handler(int irq, void *data)
 {
 	struct xilinx_pcie *pcie = (struct xilinx_pcie *)data;
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	u32 val, mask, status;
 
 	/* Read interrupt decode and mask registers */
@@ -455,7 +456,7 @@ error:
  */
 static int xilinx_pcie_init_irq_domain(struct xilinx_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	struct device_node *pcie_intc_node;
 	int ret;
 
@@ -496,7 +497,7 @@ static int xilinx_pcie_init_irq_domain(struct xilinx_pcie *pcie)
  */
 static void xilinx_pcie_init_port(struct xilinx_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 
 	if (xilinx_pcie_link_up(pcie))
 		dev_info(dev, "PCIe Link is UP\n");
@@ -529,7 +530,7 @@ static void xilinx_pcie_init_port(struct xilinx_pcie *pcie)
  */
 static int xilinx_pcie_parse_dt(struct xilinx_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	struct device_node *node = dev->of_node;
 	struct resource regs;
 	unsigned int irq;
@@ -579,7 +580,7 @@ static int xilinx_pcie_probe(struct platform_device *pdev)
 
 	pcie = pci_host_bridge_priv(bridge);
 	mutex_init(&pcie->map_lock);
-	pcie->dev = dev;
+	pcie->pdev = pdev;
 
 	err = xilinx_pcie_parse_dt(pcie);
 	if (err) {
