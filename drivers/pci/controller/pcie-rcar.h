@@ -125,7 +125,7 @@
 #define MAX_NR_INBOUND_MAPS	6
 
 struct rcar_pcie {
-	struct device		*dev;
+	struct platform_device		*pdev;
 	void __iomem		*base;
 };
 

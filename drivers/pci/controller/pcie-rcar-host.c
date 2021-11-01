@@ -216,7 +216,7 @@ static struct pci_ops rcar_pcie_ops = {
 
 static void rcar_pcie_force_speedup(struct rcar_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	unsigned int timeout = 1000;
 	u32 macsr;
 
@@ -312,7 +312,7 @@ static int rcar_pcie_enable(struct rcar_pcie_host *host)
 
 static int phy_wait_for_ack(struct rcar_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	unsigned int timeout = 100;
 
 	while (timeout--) {
@@ -490,7 +490,7 @@ static irqreturn_t rcar_pcie_msi_irq(int irq, void *data)
 	struct rcar_pcie_host *host = data;
 	struct rcar_pcie *pcie = &host->pcie;
 	struct rcar_msi *msi = &host->msi;
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	unsigned long reg;
 
 	reg = rcar_pci_read_reg(pcie, PCIEMSIFR);
@@ -653,20 +653,21 @@ static struct msi_domain_info rcar_msi_info = {
 static int rcar_allocate_domains(struct rcar_msi *msi)
 {
 	struct rcar_pcie *pcie = &msi_to_host(msi)->pcie;
-	struct fwnode_handle *fwnode = dev_fwnode(pcie->dev);
+	struct device *dev = &pcie->pdev->dev;
+	struct fwnode_handle *fwnode = dev_fwnode(dev);
 	struct irq_domain *parent;
 
 	parent = irq_domain_create_linear(fwnode, INT_PCI_MSI_NR,
 					  &rcar_msi_domain_ops, msi);
 	if (!parent) {
-		dev_err(pcie->dev, "failed to create IRQ domain\n");
+		dev_err(dev, "failed to create IRQ domain\n");
 		return -ENOMEM;
 	}
 	irq_domain_update_bus_token(parent, DOMAIN_BUS_NEXUS);
 
 	msi->domain = pci_msi_create_irq_domain(fwnode, &rcar_msi_info, parent);
 	if (!msi->domain) {
-		dev_err(pcie->dev, "failed to create MSI domain\n");
+		dev_err(dev, "failed to create MSI domain\n");
 		irq_domain_remove(parent);
 		return -ENOMEM;
 	}
@@ -685,7 +686,7 @@ static void rcar_free_domains(struct rcar_msi *msi)
 static int rcar_pcie_enable_msi(struct rcar_pcie_host *host)
 {
 	struct rcar_pcie *pcie = &host->pcie;
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	struct rcar_msi *msi = &host->msi;
 	struct resource res;
 	int err;
@@ -751,7 +752,7 @@ static void rcar_pcie_teardown_msi(struct rcar_pcie_host *host)
 static int rcar_pcie_get_resources(struct rcar_pcie_host *host)
 {
 	struct rcar_pcie *pcie = &host->pcie;
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	struct resource res;
 	int err, i;
 
@@ -821,7 +822,7 @@ static int rcar_pcie_inbound_ranges(struct rcar_pcie *pcie,
 
 	while (cpu_addr < cpu_end) {
 		if (idx >= MAX_NR_INBOUND_MAPS - 1) {
-			dev_err(pcie->dev, "Failed to map inbound regions!\n");
+			dev_err(&pcie->pdev->dev, "Failed to map inbound regions!\n");
 			return -EINVAL;
 		}
 		/*
@@ -899,13 +900,13 @@ static int rcar_pcie_probe(struct platform_device *pdev)
 
 	host = pci_host_bridge_priv(bridge);
 	pcie = &host->pcie;
-	pcie->dev = dev;
+	pcie->pdev = pdev;
 	platform_set_drvdata(pdev, host);
 
-	pm_runtime_enable(pcie->dev);
-	err = pm_runtime_get_sync(pcie->dev);
+	pm_runtime_enable(dev);
+	err = pm_runtime_get_sync(dev);
 	if (err < 0) {
-		dev_err(pcie->dev, "pm_runtime_get_sync failed\n");
+		dev_err(dev, "pm_runtime_get_sync failed\n");
 		goto err_pm_put;
 	}
 

@@ -87,10 +87,11 @@ static int rcar_pcie_ep_get_window(struct rcar_pcie_endpoint *ep,
 	return -EINVAL;
 }
 
-static int rcar_pcie_parse_outbound_ranges(struct rcar_pcie_endpoint *ep,
-					   struct platform_device *pdev)
+static int rcar_pcie_parse_outbound_ranges(struct rcar_pcie_endpoint *ep)
 {
 	struct rcar_pcie *pcie = &ep->pcie;
+	struct platform_device *pdev = pcie->pdev;
+	struct device *dev = &pdev->dev;
 	char outbound_name[10];
 	struct resource *res;
 	unsigned int i = 0;
@@ -102,13 +103,13 @@ static int rcar_pcie_parse_outbound_ranges(struct rcar_pcie_endpoint *ep,
 						   IORESOURCE_MEM,
 						   outbound_name);
 		if (!res) {
-			dev_err(pcie->dev, "missing outbound window %u\n", i);
+			dev_err(dev, "missing outbound window %u\n", i);
 			return -EINVAL;
 		}
-		if (!devm_request_mem_region(&pdev->dev, res->start,
+		if (!devm_request_mem_region(dev, res->start,
 					     resource_size(res),
 					     outbound_name)) {
-			dev_err(pcie->dev, "Cannot request memory region %s.\n",
+			dev_err(dev, "Cannot request memory region %s.\n",
 				outbound_name);
 			return -EIO;
 		}
@@ -125,12 +126,12 @@ static int rcar_pcie_parse_outbound_ranges(struct rcar_pcie_endpoint *ep,
 	return 0;
 }
 
-static int rcar_pcie_ep_get_pdata(struct rcar_pcie_endpoint *ep,
-				  struct platform_device *pdev)
+static int rcar_pcie_ep_get_pdata(struct rcar_pcie_endpoint *ep)
 {
 	struct rcar_pcie *pcie = &ep->pcie;
 	struct pci_epc_mem_window *window;
-	struct device *dev = pcie->dev;
+	struct platform_device *pdev = pcie->pdev;
+	struct device *dev = &pdev->dev;
 	struct resource res;
 	int err;
 
@@ -146,7 +147,7 @@ static int rcar_pcie_ep_get_pdata(struct rcar_pcie_endpoint *ep,
 	if (!ep->ob_window)
 		return -ENOMEM;
 
-	rcar_pcie_parse_outbound_ranges(ep, pdev);
+	rcar_pcie_parse_outbound_ranges(ep);
 
 	err = of_property_read_u8(dev->of_node, "max-functions",
 				  &ep->max_functions);
@@ -201,13 +202,14 @@ static int rcar_pcie_ep_set_bar(struct pci_epc *epc, u8 func_no, u8 vfunc_no,
 	dma_addr_t cpu_addr = epf_bar->phys_addr;
 	enum pci_barno bar = epf_bar->barno;
 	struct rcar_pcie *pcie = &ep->pcie;
+	struct device *dev = &pcie->pdev->dev;
 	u32 mask;
 	int idx;
 	int err;
 
 	idx = find_first_zero_bit(ep->ib_window_map, ep->num_ib_windows);
 	if (idx >= ep->num_ib_windows) {
-		dev_err(pcie->dev, "no free inbound window\n");
+		dev_err(dev, "no free inbound window\n");
 		return -EINVAL;
 	}
 
@@ -236,7 +238,7 @@ static int rcar_pcie_ep_set_bar(struct pci_epc *epc, u8 func_no, u8 vfunc_no,
 
 	err = rcar_pcie_wait_for_phyrdy(pcie);
 	if (err) {
-		dev_err(pcie->dev, "phy not ready\n");
+		dev_err(dev, "phy not ready\n");
 		return -EINVAL;
 	}
 
@@ -288,6 +290,7 @@ static int rcar_pcie_ep_map_addr(struct pci_epc *epc, u8 fn, u8 vfn,
 {
 	struct rcar_pcie_endpoint *ep = epc_get_drvdata(epc);
 	struct rcar_pcie *pcie = &ep->pcie;
+	struct device *dev = &pcie->pdev->dev;
 	struct resource_entry win;
 	struct resource res;
 	int window;
@@ -296,13 +299,13 @@ static int rcar_pcie_ep_map_addr(struct pci_epc *epc, u8 fn, u8 vfn,
 	/* check if we have a link. */
 	err = rcar_pcie_wait_for_dl(pcie);
 	if (err) {
-		dev_err(pcie->dev, "link not up\n");
+		dev_err(dev, "link not up\n");
 		return err;
 	}
 
 	window = rcar_pcie_ep_get_window(ep, addr);
 	if (window < 0) {
-		dev_err(pcie->dev, "failed to get corresponding window\n");
+		dev_err(dev, "failed to get corresponding window\n");
 		return -EINVAL;
 	}
 
@@ -347,23 +350,24 @@ static int rcar_pcie_ep_assert_intx(struct rcar_pcie_endpoint *ep,
 				    u8 fn, u8 intx)
 {
 	struct rcar_pcie *pcie = &ep->pcie;
+	struct device *dev = &pcie->pdev->dev;
 	u32 val;
 
 	val = rcar_pci_read_reg(pcie, PCIEMSITXR);
 	if ((val & PCI_MSI_FLAGS_ENABLE)) {
-		dev_err(pcie->dev, "MSI is enabled, cannot assert INTx\n");
+		dev_err(dev, "MSI is enabled, cannot assert INTx\n");
 		return -EINVAL;
 	}
 
 	val = rcar_pci_read_reg(pcie, PCICONF(1));
 	if ((val & INTDIS)) {
-		dev_err(pcie->dev, "INTx message transmission is disabled\n");
+		dev_err(dev, "INTx message transmission is disabled\n");
 		return -EINVAL;
 	}
 
 	val = rcar_pci_read_reg(pcie, PCIEINTXR);
 	if ((val & ASTINTX)) {
-		dev_err(pcie->dev, "INTx is already asserted\n");
+		dev_err(dev, "INTx is already asserted\n");
 		return -EINVAL;
 	}
 
@@ -487,7 +491,7 @@ static int rcar_pcie_ep_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	pcie = &ep->pcie;
-	pcie->dev = dev;
+	pcie->pdev = pdev;
 
 	pm_runtime_enable(dev);
 	err = pm_runtime_resume_and_get(dev);
@@ -496,7 +500,7 @@ static int rcar_pcie_ep_probe(struct platform_device *pdev)
 		goto err_pm_disable;
 	}
 
-	err = rcar_pcie_ep_get_pdata(ep, pdev);
+	err = rcar_pcie_ep_get_pdata(ep);
 	if (err < 0) {
 		dev_err(dev, "failed to request resources: %d\n", err);
 		goto err_pm_put;
