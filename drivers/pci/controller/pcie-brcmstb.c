@@ -278,7 +278,7 @@ struct brcm_msi {
 
 /* Internal PCIe Host Controller Information.*/
 struct brcm_pcie {
-	struct device		*dev;
+	struct platform_device		*pdev;
 	void __iomem		*base;
 	struct clk		*clk;
 	struct device_node	*np;
@@ -641,7 +641,7 @@ static int brcm_pcie_enable_msi(struct brcm_pcie *pcie)
 {
 	struct brcm_msi *msi;
 	int irq, ret;
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 
 	irq = irq_of_parse_and_map(dev->of_node, 1);
 	if (irq <= 0) {
@@ -780,7 +780,7 @@ static inline int brcm_pcie_get_rc_bar2_size_and_offset(struct brcm_pcie *pcie,
 {
 	struct pci_host_bridge *bridge = pci_host_bridge_from_priv(pcie);
 	struct resource_entry *entry;
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	u64 lowest_pcie_addr = ~(u64)0;
 	int ret, i = 0;
 	u64 size = 0;
@@ -866,7 +866,7 @@ static int brcm_pcie_setup(struct brcm_pcie *pcie)
 	struct pci_host_bridge *bridge = pci_host_bridge_from_priv(pcie);
 	u64 rc_bar2_offset, rc_bar2_size;
 	void __iomem *base = pcie->base;
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	struct resource_entry *entry;
 	bool ssc_good = false;
 	struct resource *res;
@@ -984,7 +984,7 @@ static int brcm_pcie_setup(struct brcm_pcie *pcie)
 			continue;
 
 		if (num_out_wins >= BRCM_NUM_PCIE_OUT_WINS) {
-			dev_err(pcie->dev, "too many outbound wins\n");
+			dev_err(dev, "too many outbound wins\n");
 			return -EINVAL;
 		}
 
@@ -1067,7 +1067,7 @@ static void brcm_pcie_enter_l23(struct brcm_pcie *pcie)
 	}
 
 	if (!l23)
-		dev_err(pcie->dev, "failed to enter low-power link state\n");
+		dev_err(&pcie->pdev->dev, "failed to enter low-power link state\n");
 }
 
 static int brcm_phy_cntl(struct brcm_pcie *pcie, const int start)
@@ -1101,7 +1101,7 @@ static int brcm_phy_cntl(struct brcm_pcie *pcie, const int start)
 
 	ret = (tmp & combined_mask) == val ? 0 : -EIO;
 	if (ret)
-		dev_err(pcie->dev, "failed to %s phy\n", (start ? "start" : "stop"));
+		dev_err(&pcie->pdev->dev, "failed to %s phy\n", (start ? "start" : "stop"));
 
 	return ret;
 }
@@ -1231,24 +1231,25 @@ static const struct of_device_id brcm_pcie_match[] = {
 
 static int brcm_pcie_probe(struct platform_device *pdev)
 {
+	struct device *dev = &pdev->dev;
 	struct device_node *np = pdev->dev.of_node, *msi_np;
 	struct pci_host_bridge *bridge;
 	const struct pcie_cfg_data *data;
 	struct brcm_pcie *pcie;
 	int ret;
 
-	bridge = devm_pci_alloc_host_bridge(&pdev->dev, sizeof(*pcie));
+	bridge = devm_pci_alloc_host_bridge(dev, sizeof(*pcie));
 	if (!bridge)
 		return -ENOMEM;
 
-	data = of_device_get_match_data(&pdev->dev);
+	data = of_device_get_match_data(dev);
 	if (!data) {
 		pr_err("failed to look up compatible string\n");
 		return -EINVAL;
 	}
 
 	pcie = pci_host_bridge_priv(bridge);
-	pcie->dev = &pdev->dev;
+	pcie->pdev = pdev;
 	pcie->np = np;
 	pcie->reg_offsets = data->offsets;
 	pcie->type = data->type;
@@ -1259,7 +1260,7 @@ static int brcm_pcie_probe(struct platform_device *pdev)
 	if (IS_ERR(pcie->base))
 		return PTR_ERR(pcie->base);
 
-	pcie->clk = devm_clk_get_optional(&pdev->dev, "sw_pcie");
+	pcie->clk = devm_clk_get_optional(dev, "sw_pcie");
 	if (IS_ERR(pcie->clk))
 		return PTR_ERR(pcie->clk);
 
@@ -1270,15 +1271,15 @@ static int brcm_pcie_probe(struct platform_device *pdev)
 
 	ret = clk_prepare_enable(pcie->clk);
 	if (ret) {
-		dev_err(&pdev->dev, "could not enable clock\n");
+		dev_err(dev, "could not enable clock\n");
 		return ret;
 	}
-	pcie->rescal = devm_reset_control_get_optional_shared(&pdev->dev, "rescal");
+	pcie->rescal = devm_reset_control_get_optional_shared(dev, "rescal");
 	if (IS_ERR(pcie->rescal)) {
 		clk_disable_unprepare(pcie->clk);
 		return PTR_ERR(pcie->rescal);
 	}
-	pcie->perst_reset = devm_reset_control_get_optional_exclusive(&pdev->dev, "perst");
+	pcie->perst_reset = devm_reset_control_get_optional_exclusive(dev, "perst");
 	if (IS_ERR(pcie->perst_reset)) {
 		clk_disable_unprepare(pcie->clk);
 		return PTR_ERR(pcie->perst_reset);
@@ -1286,7 +1287,7 @@ static int brcm_pcie_probe(struct platform_device *pdev)
 
 	ret = reset_control_reset(pcie->rescal);
 	if (ret)
-		dev_err(&pdev->dev, "failed to deassert 'rescal'\n");
+		dev_err(dev, "failed to deassert 'rescal'\n");
 
 	ret = brcm_phy_start(pcie);
 	if (ret) {
@@ -1301,7 +1302,7 @@ static int brcm_pcie_probe(struct platform_device *pdev)
 
 	pcie->hw_rev = readl(pcie->base + PCIE_MISC_REVISION);
 	if (pcie->type == BCM4908 && pcie->hw_rev >= BRCM_PCIE_HW_REV_3_20) {
-		dev_err(pcie->dev, "hardware revision with unsupported PERST# setup\n");
+		dev_err(dev, "hardware revision with unsupported PERST# setup\n");
 		ret = -ENODEV;
 		goto fail;
 	}
@@ -1310,7 +1311,7 @@ static int brcm_pcie_probe(struct platform_device *pdev)
 	if (pci_msi_enabled() && msi_np == pcie->np) {
 		ret = brcm_pcie_enable_msi(pcie);
 		if (ret) {
-			dev_err(pcie->dev, "probe of internal MSI failed");
+			dev_err(dev, "probe of internal MSI failed");
 			goto fail;
 		}
 	}
