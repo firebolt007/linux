@@ -236,7 +236,7 @@
 #define INTEGRATOR_SC_LBFCODE_OFFSET	0x24
 
 struct v3_pci {
-	struct device *dev;
+	struct platform_device *pdev;
 	void __iomem *base;
 	void __iomem *config_base;
 	u32 config_mem;
@@ -438,7 +438,7 @@ static struct pci_ops v3_pci_ops = {
 static irqreturn_t v3_irq(int irq, void *data)
 {
 	struct v3_pci *v3 = data;
-	struct device *dev = v3->dev;
+	struct device *dev = &v3->pdev->dev;
 	u32 status;
 
 	status = readw(v3->base + V3_PCI_STAT);
@@ -481,12 +481,13 @@ static irqreturn_t v3_irq(int irq, void *data)
 
 static int v3_integrator_init(struct v3_pci *v3)
 {
+	struct device *dev = &v3->pdev->dev;
 	unsigned int val;
 
 	v3->map =
 		syscon_regmap_lookup_by_compatible("arm,integrator-ap-syscon");
 	if (IS_ERR(v3->map)) {
-		dev_err(v3->dev, "no syscon\n");
+		dev_err(dev, "no syscon\n");
 		return -ENODEV;
 	}
 
@@ -511,7 +512,7 @@ static int v3_integrator_init(struct v3_pci *v3)
 			 readb(v3->base + V3_MAIL_DATA) != 0x55);
 	}
 
-	dev_info(v3->dev, "initialized PCI V3 Integrator/AP integration\n");
+	dev_info(dev, "initialized PCI V3 Integrator/AP integration\n");
 
 	return 0;
 }
@@ -520,7 +521,7 @@ static int v3_pci_setup_resource(struct v3_pci *v3,
 				 struct pci_host_bridge *host,
 				 struct resource_entry *win)
 {
-	struct device *dev = v3->dev;
+	struct device *dev = &v3->pdev->dev;
 	struct resource *mem;
 	struct resource *io;
 
@@ -598,7 +599,7 @@ static int v3_get_dma_range_config(struct v3_pci *v3,
 				   struct resource_entry *entry,
 				   u32 *pci_base, u32 *pci_map)
 {
-	struct device *dev = v3->dev;
+	struct device *dev = &v3->pdev->dev;
 	u64 cpu_addr = entry->res->start;
 	u64 cpu_end = entry->res->end;
 	u64 pci_end = cpu_end - entry->offset;
@@ -656,7 +657,7 @@ static int v3_get_dma_range_config(struct v3_pci *v3,
 		val |= V3_LB_BASE_ADR_SIZE_2GB;
 		break;
 	default:
-		dev_err(v3->dev, "illegal dma memory chunk size\n");
+		dev_err(dev, "illegal dma memory chunk size\n");
 		return -EINVAL;
 	}
 	val |= V3_PCI_MAP_M_REG_EN | V3_PCI_MAP_M_ENABLE;
@@ -676,7 +677,7 @@ static int v3_pci_parse_map_dma_ranges(struct v3_pci *v3,
 				       struct device_node *np)
 {
 	struct pci_host_bridge *bridge = pci_host_bridge_from_priv(v3);
-	struct device *dev = v3->dev;
+	struct device *dev = &v3->pdev->dev;
 	struct resource_entry *entry;
 	int i = 0;
 
@@ -723,7 +724,7 @@ static int v3_pci_probe(struct platform_device *pdev)
 	host->ops = &v3_pci_ops;
 	v3 = pci_host_bridge_priv(host);
 	host->sysdata = v3;
-	v3->dev = dev;
+	v3->pdev = pdev;
 
 	/* Get and enable host clock */
 	clk = devm_clk_get(dev, NULL);
