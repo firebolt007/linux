@@ -101,7 +101,7 @@
 #define IXP4XX_PCI_RTOTTO		0x40
 
 struct ixp4xx_pci {
-	struct device *dev;
+	struct platform_device *pdev;
 	void __iomem *base;
 	bool errata_hammer;
 	bool host_mode;
@@ -138,7 +138,7 @@ static int ixp4xx_pci_check_master_abort(struct ixp4xx_pci *p)
 	if (isr & IXP4XX_PCI_ISR_PFE) {
 		/* Make sure the master abort bit is reset */
 		ixp4xx_writel(p, IXP4XX_PCI_ISR, IXP4XX_PCI_ISR_PFE);
-		dev_dbg(p->dev, "master abort detected\n");
+		dev_dbg(&p->pdev->dev, "master abort detected\n");
 		return -EINVAL;
 	}
 
@@ -216,12 +216,13 @@ static u32 ixp4xx_crp_byte_lane_enable_bits(u32 n, int size)
 static int ixp4xx_crp_read_config(struct ixp4xx_pci *p, int where, int size,
 				  u32 *value)
 {
+	struct device *dev = &p->pdev->dev;
 	u32 n, cmd, val;
 
 	n = where % 4;
 	cmd = where & ~3;
 
-	dev_dbg(p->dev, "%s from %d size %d cmd %08x\n",
+	dev_dbg(dev, "%s from %d size %d cmd %08x\n",
 		__func__, where, size, cmd);
 
 	ixp4xx_writel(p, IXP4XX_PCI_CRP_AD_CBE, cmd);
@@ -231,19 +232,19 @@ static int ixp4xx_crp_read_config(struct ixp4xx_pci *p, int where, int size,
 	switch (size) {
 	case 1:
 		val &= U8_MAX;
-		dev_dbg(p->dev, "%s read byte %02x\n", __func__, val);
+		dev_dbg(dev, "%s read byte %02x\n", __func__, val);
 		break;
 	case 2:
 		val &= U16_MAX;
-		dev_dbg(p->dev, "%s read word %04x\n", __func__, val);
+		dev_dbg(dev, "%s read word %04x\n", __func__, val);
 		break;
 	case 4:
 		val &= U32_MAX;
-		dev_dbg(p->dev, "%s read long %08x\n", __func__, val);
+		dev_dbg(dev, "%s read long %08x\n", __func__, val);
 		break;
 	default:
 		/* Should not happen */
-		dev_err(p->dev, "%s illegal size\n", __func__);
+		dev_err(dev, "%s illegal size\n", __func__);
 		return PCIBIOS_DEVICE_NOT_FOUND;
 	}
 	*value = val;
@@ -254,6 +255,7 @@ static int ixp4xx_crp_read_config(struct ixp4xx_pci *p, int where, int size,
 static int ixp4xx_crp_write_config(struct ixp4xx_pci *p, int where, int size,
 				   u32 value)
 {
+	struct device *dev = &p->pdev->dev;
 	u32 n, cmd, val;
 
 	n = where % 4;
@@ -265,7 +267,7 @@ static int ixp4xx_crp_write_config(struct ixp4xx_pci *p, int where, int size,
 
 	val = value << (8*n);
 
-	dev_dbg(p->dev, "%s to %d size %d cmd %08x val %08x\n",
+	dev_dbg(dev, "%s to %d size %d cmd %08x val %08x\n",
 		__func__, where, size, cmd, val);
 
 	ixp4xx_writel(p, IXP4XX_PCI_CRP_AD_CBE, cmd);
@@ -293,6 +295,7 @@ static int ixp4xx_pci_read_config(struct pci_bus *bus, unsigned int devfn,
 				  int where, int size, u32 *value)
 {
 	struct ixp4xx_pci *p = bus->sysdata;
+	struct device *dev = &p->pdev->dev;
 	u32 n, addr, val, cmd;
 	u8 bus_num = bus->number;
 	int ret;
@@ -305,7 +308,7 @@ static int ixp4xx_pci_read_config(struct pci_bus *bus, unsigned int devfn,
 
 	addr = ixp4xx_config_addr(bus_num, devfn, where);
 	cmd |= NP_CMD_CONFIGREAD;
-	dev_dbg(p->dev, "read_config from %d size %d dev %d:%d:%d address: %08x cmd: %08x\n",
+	dev_dbg(dev, "read_config from %d size %d dev %d:%d:%d address: %08x cmd: %08x\n",
 		where, size, bus_num, PCI_SLOT(devfn), PCI_FUNC(devfn), addr, cmd);
 
 	ret = ixp4xx_pci_read_indirect(p, addr, cmd, &val);
@@ -316,19 +319,19 @@ static int ixp4xx_pci_read_config(struct pci_bus *bus, unsigned int devfn,
 	switch (size) {
 	case 1:
 		val &= U8_MAX;
-		dev_dbg(p->dev, "%s read byte %02x\n", __func__, val);
+		dev_dbg(dev, "%s read byte %02x\n", __func__, val);
 		break;
 	case 2:
 		val &= U16_MAX;
-		dev_dbg(p->dev, "%s read word %04x\n", __func__, val);
+		dev_dbg(dev, "%s read word %04x\n", __func__, val);
 		break;
 	case 4:
 		val &= U32_MAX;
-		dev_dbg(p->dev, "%s read long %08x\n", __func__, val);
+		dev_dbg(dev, "%s read long %08x\n", __func__, val);
 		break;
 	default:
 		/* Should not happen */
-		dev_err(p->dev, "%s illegal size\n", __func__);
+		dev_err(dev, "%s illegal size\n", __func__);
 		return PCIBIOS_DEVICE_NOT_FOUND;
 	}
 	*value = val;
@@ -340,6 +343,7 @@ static int ixp4xx_pci_write_config(struct pci_bus *bus,  unsigned int devfn,
 				   int where, int size, u32 value)
 {
 	struct ixp4xx_pci *p = bus->sysdata;
+	struct device *dev = &p->pdev->dev;
 	u32 n, addr, val, cmd;
 	u8 bus_num = bus->number;
 	int ret;
@@ -353,7 +357,7 @@ static int ixp4xx_pci_write_config(struct pci_bus *bus,  unsigned int devfn,
 	cmd |= NP_CMD_CONFIGWRITE;
 	val = value << (8*n);
 
-	dev_dbg(p->dev, "write_config_byte %#x to %d size %d dev %d:%d:%d addr: %08x cmd %08x\n",
+	dev_dbg(dev, "write_config_byte %#x to %d size %d dev %d:%d:%d addr: %08x cmd %08x\n",
 		value, where, size, bus_num, PCI_SLOT(devfn), PCI_FUNC(devfn), addr, cmd);
 
 	ret = ixp4xx_pci_write_indirect(p, addr, cmd, val);
@@ -379,7 +383,7 @@ static u32 ixp4xx_pci_addr_to_64mconf(phys_addr_t addr)
 
 static int ixp4xx_pci_parse_map_ranges(struct ixp4xx_pci *p)
 {
-	struct device *dev = p->dev;
+	struct device *dev = &p->pdev->dev;
 	struct pci_host_bridge *bridge = pci_host_bridge_from_priv(p);
 	struct resource_entry *win;
 	struct resource *res;
@@ -437,7 +441,7 @@ static int ixp4xx_pci_parse_map_ranges(struct ixp4xx_pci *p)
 
 static int ixp4xx_pci_parse_map_dma_ranges(struct ixp4xx_pci *p)
 {
-	struct device *dev = p->dev;
+	struct device *dev = &p->pdev->dev;
 	struct pci_host_bridge *bridge = pci_host_bridge_from_priv(p);
 	struct resource_entry *win;
 	struct resource *res;
@@ -476,17 +480,18 @@ static int ixp4xx_pci_abort_handler(unsigned long addr, unsigned int fsr,
 				    struct pt_regs *regs)
 {
 	struct ixp4xx_pci *p = ixp4xx_pci_abort_singleton;
+	struct device *dev = &p->pdev->dev;
 	u32 isr, status;
 	int ret;
 
 	isr = ixp4xx_readl(p, IXP4XX_PCI_ISR);
 	ret = ixp4xx_crp_read_config(p, PCI_STATUS, 2, &status);
 	if (ret) {
-		dev_err(p->dev, "unable to read abort status\n");
+		dev_err(dev, "unable to read abort status\n");
 		return -EINVAL;
 	}
 
-	dev_err(p->dev,
+	dev_err(dev,
 		"PCI: abort_handler addr = %#lx, isr = %#x, status = %#x\n",
 		addr, isr, status);
 
@@ -495,14 +500,14 @@ static int ixp4xx_pci_abort_handler(unsigned long addr, unsigned int fsr,
 	status |= PCI_STATUS_REC_MASTER_ABORT;
 	ret = ixp4xx_crp_write_config(p, PCI_STATUS, 2, status);
 	if (ret)
-		dev_err(p->dev, "unable to clear abort status bit\n");
+		dev_err(dev, "unable to clear abort status bit\n");
 
 	/*
 	 * If it was an imprecise abort, then we need to correct the
 	 * return address to be _after_ the instruction.
 	 */
 	if (fsr & (1 << 10)) {
-		dev_err(p->dev, "imprecise abort\n");
+		dev_err(dev, "imprecise abort\n");
 		regs->ARM_pc += 4;
 	}
 
@@ -533,7 +538,7 @@ static int __init ixp4xx_pci_probe(struct platform_device *pdev)
 	host->ops = &ixp4xx_pci_ops;
 	p = pci_host_bridge_priv(host);
 	host->sysdata = p;
-	p->dev = dev;
+	p->pdev = pdev;
 	dev_set_drvdata(dev, p);
 
 	/*
