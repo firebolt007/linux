@@ -154,7 +154,7 @@ struct nwl_msi {			/* MSI information */
 };
 
 struct nwl_pcie {
-	struct device *dev;
+	struct platform_device *pdev;
 	void __iomem *breg_base;
 	void __iomem *pcireg_base;
 	void __iomem *ecam_base;
@@ -200,7 +200,7 @@ static bool nwl_phy_link_up(struct nwl_pcie *pcie)
 
 static int nwl_wait_for_link(struct nwl_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	int retries;
 
 	/* check if the link is up or not */
@@ -260,7 +260,7 @@ static struct pci_ops nwl_pcie_ops = {
 static irqreturn_t nwl_pcie_misc_handler(int irq, void *data)
 {
 	struct nwl_pcie *pcie = data;
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	u32 misc_stat;
 
 	/* Checking for misc interrupts */
@@ -504,7 +504,7 @@ static const struct irq_domain_ops dev_msi_domain_ops = {
 static int nwl_pcie_init_msi_irq_domain(struct nwl_pcie *pcie)
 {
 #ifdef CONFIG_PCI_MSI
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	struct fwnode_handle *fwnode = of_node_to_fwnode(dev->of_node);
 	struct nwl_msi *msi = &pcie->msi;
 
@@ -528,7 +528,7 @@ static int nwl_pcie_init_msi_irq_domain(struct nwl_pcie *pcie)
 
 static int nwl_pcie_init_irq_domain(struct nwl_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	struct device_node *node = dev->of_node;
 	struct device_node *legacy_intc_node;
 
@@ -555,8 +555,8 @@ static int nwl_pcie_init_irq_domain(struct nwl_pcie *pcie)
 
 static int nwl_pcie_enable_msi(struct nwl_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
-	struct platform_device *pdev = to_platform_device(dev);
+	struct platform_device *pdev = pcie->pdev;
+	struct device *dev = &pdev->dev;
 	struct nwl_msi *msi = &pcie->msi;
 	unsigned long base;
 	int ret;
@@ -640,8 +640,8 @@ err:
 
 static int nwl_pcie_bridge_init(struct nwl_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
-	struct platform_device *pdev = to_platform_device(dev);
+	struct platform_device *pdev = pcie->pdev;
+	struct device *dev = &pdev->dev;
 	u32 breg_val, ecam_val, first_busno = 0;
 	int err;
 
@@ -756,10 +756,10 @@ static int nwl_pcie_bridge_init(struct nwl_pcie *pcie)
 	return 0;
 }
 
-static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
-			     struct platform_device *pdev)
+static int nwl_pcie_parse_dt(struct nwl_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
+	struct platform_device *pdev = pcie->pdev;
+	struct device *dev = &pdev->dev;
 	struct resource *res;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "breg");
@@ -809,10 +809,10 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 
 	pcie = pci_host_bridge_priv(bridge);
 
-	pcie->dev = dev;
+	pcie->pdev = pdev;
 	pcie->ecam_value = NWL_ECAM_VALUE_DEFAULT;
 
-	err = nwl_pcie_parse_dt(pcie, pdev);
+	err = nwl_pcie_parse_dt(pcie);
 	if (err) {
 		dev_err(dev, "Parsing DT failed\n");
 		return err;
