@@ -130,7 +130,7 @@ struct mtk_msi_set {
  * @msi_irq_in_use: bit map for assigned MSI IRQ
  */
 struct mtk_gen3_pcie {
-	struct device *dev;
+	struct platform_device *pdev;
 	void __iomem *base;
 	phys_addr_t reg_base;
 	struct reset_control *mac_reset;
@@ -213,11 +213,12 @@ static int mtk_pcie_set_trans_table(struct mtk_gen3_pcie *pcie,
 				    resource_size_t size,
 				    unsigned long type, int num)
 {
+	struct device *dev = &pcie->pdev->dev;
 	void __iomem *table;
 	u32 val;
 
 	if (num >= PCIE_MAX_TRANS_TABLES) {
-		dev_err(pcie->dev, "not enough translate table for addr: %#llx, limited to [%d]\n",
+		dev_err(dev, "not enough translate table for addr: %#llx, limited to [%d]\n",
 			(unsigned long long)cpu_addr, PCIE_MAX_TRANS_TABLES);
 		return -ENODEV;
 	}
@@ -275,6 +276,7 @@ static void mtk_pcie_enable_msi(struct mtk_gen3_pcie *pcie)
 
 static int mtk_pcie_startup_port(struct mtk_gen3_pcie *pcie)
 {
+	struct device *dev = &pcie->pdev->dev;
 	struct resource_entry *entry;
 	struct pci_host_bridge *host = pci_host_bridge_from_priv(pcie);
 	unsigned int table_index = 0;
@@ -320,7 +322,7 @@ static int mtk_pcie_startup_port(struct mtk_gen3_pcie *pcie)
 				 PCI_PM_D3COLD_WAIT * USEC_PER_MSEC);
 	if (err) {
 		val = readl_relaxed(pcie->base + PCIE_LTSSM_STATUS_REG);
-		dev_err(pcie->dev, "PCIe link down, ltssm reg val: %#x\n", val);
+		dev_err(dev, "PCIe link down, ltssm reg val: %#x\n", val);
 		return err;
 	}
 
@@ -352,7 +354,7 @@ static int mtk_pcie_startup_port(struct mtk_gen3_pcie *pcie)
 		if (err)
 			return err;
 
-		dev_dbg(pcie->dev, "set %s trans window[%d]: cpu_addr = %#llx, pci_addr = %#llx, size = %#llx\n",
+		dev_dbg(dev, "set %s trans window[%d]: cpu_addr = %#llx, pci_addr = %#llx, size = %#llx\n",
 			range_type, table_index, (unsigned long long)cpu_addr,
 			(unsigned long long)pci_addr, (unsigned long long)size);
 
@@ -397,6 +399,7 @@ static void mtk_compose_msi_msg(struct irq_data *data, struct msi_msg *msg)
 {
 	struct mtk_msi_set *msi_set = irq_data_get_irq_chip_data(data);
 	struct mtk_gen3_pcie *pcie = data->domain->host_data;
+	struct device *dev = &pcie->pdev->dev;
 	unsigned long hwirq;
 
 	hwirq =	data->hwirq % PCIE_MSI_IRQS_PER_SET;
@@ -404,7 +407,7 @@ static void mtk_compose_msi_msg(struct irq_data *data, struct msi_msg *msg)
 	msg->address_hi = upper_32_bits(msi_set->msg_addr);
 	msg->address_lo = lower_32_bits(msi_set->msg_addr);
 	msg->data = hwirq;
-	dev_dbg(pcie->dev, "msi#%#lx address_hi %#x address_lo %#x data %d\n",
+	dev_dbg(dev, "msi#%#lx address_hi %#x address_lo %#x data %d\n",
 		hwirq, msg->address_hi, msg->address_lo, msg->data);
 }
 
@@ -575,7 +578,7 @@ static const struct irq_domain_ops intx_domain_ops = {
 
 static int mtk_pcie_init_irq_domains(struct mtk_gen3_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	struct device_node *intc_node, *node = dev->of_node;
 	int ret;
 
@@ -691,8 +694,8 @@ static void mtk_pcie_irq_handler(struct irq_desc *desc)
 
 static int mtk_pcie_setup_irq(struct mtk_gen3_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
-	struct platform_device *pdev = to_platform_device(dev);
+	struct platform_device *pdev = pcie->pdev;
+	struct device *dev = &pdev->dev;
 	int err;
 
 	err = mtk_pcie_init_irq_domains(pcie);
@@ -710,8 +713,8 @@ static int mtk_pcie_setup_irq(struct mtk_gen3_pcie *pcie)
 
 static int mtk_pcie_parse_port(struct mtk_gen3_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
-	struct platform_device *pdev = to_platform_device(dev);
+	struct platform_device *pdev = pcie->pdev;
+	struct device *dev = &pdev->dev;
 	struct resource *regs;
 	int ret;
 
@@ -764,7 +767,7 @@ static int mtk_pcie_parse_port(struct mtk_gen3_pcie *pcie)
 
 static int mtk_pcie_power_up(struct mtk_gen3_pcie *pcie)
 {
-	struct device *dev = pcie->dev;
+	struct device *dev = &pcie->pdev->dev;
 	int err;
 
 	/* PHY power on and enable pipe clock */
@@ -811,10 +814,11 @@ err_phy_init:
 
 static void mtk_pcie_power_down(struct mtk_gen3_pcie *pcie)
 {
+	struct device *dev = &pcie->pdev->dev;
 	clk_bulk_disable_unprepare(pcie->num_clks, pcie->clks);
 
-	pm_runtime_put_sync(pcie->dev);
-	pm_runtime_disable(pcie->dev);
+	pm_runtime_put_sync(dev);
+	pm_runtime_disable(dev);
 	reset_control_assert(pcie->mac_reset);
 
 	phy_power_off(pcie->phy);
@@ -865,7 +869,7 @@ static int mtk_pcie_probe(struct platform_device *pdev)
 
 	pcie = pci_host_bridge_priv(host);
 
-	pcie->dev = dev;
+	pcie->pdev = pdev;
 	platform_set_drvdata(pdev, pcie);
 
 	err = mtk_pcie_setup(pcie);
@@ -961,7 +965,7 @@ static int __maybe_unused mtk_pcie_suspend_noirq(struct device *dev)
 	/* Trigger link to L2 state */
 	err = mtk_pcie_turn_off_link(pcie);
 	if (err) {
-		dev_err(pcie->dev, "cannot enter L2 state\n");
+		dev_err(dev, "cannot enter L2 state\n");
 		return err;
 	}
 
@@ -970,7 +974,7 @@ static int __maybe_unused mtk_pcie_suspend_noirq(struct device *dev)
 	val |= PCIE_PE_RSTB;
 	writel_relaxed(val, pcie->base + PCIE_RST_CTRL_REG);
 
-	dev_dbg(pcie->dev, "entered L2 states successfully");
+	dev_dbg(dev, "entered L2 states successfully");
 
 	mtk_pcie_irq_save(pcie);
 	mtk_pcie_power_down(pcie);
