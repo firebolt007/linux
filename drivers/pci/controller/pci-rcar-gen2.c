@@ -94,7 +94,7 @@
 #define RCAR_PCI_UNIT_REV_REG		(RCAR_AHBPCI_PCICOM_OFFSET + 0x48)
 
 struct rcar_pci_priv {
-	struct device *dev;
+	struct platform_device *pdev;
 	void __iomem *reg;
 	struct resource mem_res;
 	struct resource *cfg_res;
@@ -133,7 +133,7 @@ static void __iomem *rcar_pci_cfg_base(struct pci_bus *bus, unsigned int devfn,
 static irqreturn_t rcar_pci_err_irq(int irq, void *pw)
 {
 	struct rcar_pci_priv *priv = pw;
-	struct device *dev = priv->dev;
+	struct device *dev = &priv->pdev->dev;
 	u32 status = ioread32(priv->reg + RCAR_PCI_INT_STATUS_REG);
 
 	if (status & RCAR_PCI_INT_ALLERRORS) {
@@ -150,7 +150,7 @@ static irqreturn_t rcar_pci_err_irq(int irq, void *pw)
 
 static void rcar_pci_setup_errirq(struct rcar_pci_priv *priv)
 {
-	struct device *dev = priv->dev;
+	struct device *dev = &priv->pdev->dev;
 	int ret;
 	u32 val;
 
@@ -173,7 +173,7 @@ static inline void rcar_pci_setup_errirq(struct rcar_pci_priv *priv) { }
 static void rcar_pci_setup(struct rcar_pci_priv *priv)
 {
 	struct pci_host_bridge *bridge = pci_host_bridge_from_priv(priv);
-	struct device *dev = priv->dev;
+	struct device *dev = &priv->pdev->dev;
 	void __iomem *reg = priv->reg;
 	struct resource_entry *entry;
 	unsigned long window_size;
@@ -307,7 +307,7 @@ static int rcar_pci_probe(struct platform_device *pdev)
 
 	priv->irq = platform_get_irq(pdev, 0);
 	priv->reg = reg;
-	priv->dev = dev;
+	priv->pdev = pdev;
 
 	if (priv->irq < 0) {
 		dev_err(dev, "no valid irq found\n");
