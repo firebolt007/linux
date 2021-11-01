@@ -120,7 +120,7 @@ struct faraday_pci_variant {
 };
 
 struct faraday_pci {
-	struct device *dev;
+	struct platform_device *pdev;
 	void __iomem *base;
 	struct irq_domain *irqdomain;
 	struct pci_bus *bus;
@@ -342,19 +342,20 @@ static const struct irq_domain_ops faraday_pci_irqdomain_ops = {
 
 static int faraday_pci_setup_cascaded_irq(struct faraday_pci *p)
 {
-	struct device_node *intc = of_get_next_child(p->dev->of_node, NULL);
+	struct device *dev = &p->pdev->dev;
+	struct device_node *intc = of_get_next_child(dev->of_node, NULL);
 	int irq;
 	int i;
 
 	if (!intc) {
-		dev_err(p->dev, "missing child interrupt-controller node\n");
+		dev_err(dev, "missing child interrupt-controller node\n");
 		return -EINVAL;
 	}
 
 	/* All PCI IRQs cascade off this one */
 	irq = of_irq_get(intc, 0);
 	if (irq <= 0) {
-		dev_err(p->dev, "failed to get parent IRQ\n");
+		dev_err(dev, "failed to get parent IRQ\n");
 		of_node_put(intc);
 		return irq ?: -EINVAL;
 	}
@@ -363,7 +364,7 @@ static int faraday_pci_setup_cascaded_irq(struct faraday_pci *p)
 					     &faraday_pci_irqdomain_ops, p);
 	of_node_put(intc);
 	if (!p->irqdomain) {
-		dev_err(p->dev, "failed to create Gemini PCI IRQ domain\n");
+		dev_err(dev, "failed to create Gemini PCI IRQ domain\n");
 		return -EINVAL;
 	}
 
@@ -377,7 +378,7 @@ static int faraday_pci_setup_cascaded_irq(struct faraday_pci *p)
 
 static int faraday_pci_parse_map_dma_ranges(struct faraday_pci *p)
 {
-	struct device *dev = p->dev;
+	struct device *dev = &p->pdev->dev;
 	struct pci_host_bridge *bridge = pci_host_bridge_from_priv(p);
 	struct resource_entry *entry;
 	u32 confreg[3] = {
@@ -439,7 +440,7 @@ static int faraday_pci_probe(struct platform_device *pdev)
 	host->ops = &faraday_pci_ops;
 	p = pci_host_bridge_priv(host);
 	host->sysdata = p;
-	p->dev = dev;
+	p->pdev = pdev;
 
 	/* Retrieve and enable optional clocks */
 	clk = devm_clk_get(dev, "PCLK");
