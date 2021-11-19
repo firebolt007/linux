@@ -130,7 +130,6 @@ struct al_pcie_target_bus_cfg {
 struct al_pcie {
 	struct dw_pcie *pci;
 	void __iomem *controller_base; /* base of PCIe unit (not DW core) */
-	struct device *dev;
 	resource_size_t ecam_size;
 	unsigned int controller_rev_id;
 	struct al_pcie_reg_offsets reg_offsets;
@@ -171,12 +170,12 @@ static int al_pcie_rev_id_get(struct al_pcie *pcie, unsigned int *rev_id)
 		*rev_id = AL_PCIE_REV_ID_4;
 		break;
 	default:
-		dev_err(pcie->dev, "Unsupported dev_id_val (0x%x)\n",
+		dev_err(pcie->pci->dev, "Unsupported dev_id_val (0x%x)\n",
 			dev_id_val);
 		return -EINVAL;
 	}
 
-	dev_dbg(pcie->dev, "dev_id_val: 0x%x\n", dev_id_val);
+	dev_dbg(pcie->pci->dev, "dev_id_val: 0x%x\n", dev_id_val);
 
 	return 0;
 }
@@ -192,7 +191,7 @@ static int al_pcie_reg_offsets_set(struct al_pcie *pcie)
 		pcie->reg_offsets.ob_ctrl = OB_CTRL_REV3_5_OFFSET;
 		break;
 	default:
-		dev_err(pcie->dev, "Unsupported controller rev_id: 0x%x\n",
+		dev_err(pcie->pci->dev, "Unsupported controller rev_id: 0x%x\n",
 			pcie->controller_rev_id);
 		return -EINVAL;
 	}
@@ -258,7 +257,7 @@ static void al_pcie_config_prepare(struct al_pcie *pcie)
 
 	ecam_bus_mask = (pcie->ecam_size >> PCIE_ECAM_BUS_SHIFT) - 1;
 	if (ecam_bus_mask > 255) {
-		dev_warn(pcie->dev, "ECAM window size is larger than 256MB. Cutting off at 256\n");
+		dev_warn(pcie->pci->dev, "ECAM window size is larger than 256MB. Cutting off at 256\n");
 		ecam_bus_mask = 255;
 	}
 
@@ -334,7 +333,6 @@ static int al_pcie_probe(struct platform_device *pdev)
 	pci->pp.ops = &al_pcie_host_ops;
 
 	al_pcie->pci = pci;
-	al_pcie->dev = dev;
 
 	ecam_res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "config");
 	if (!ecam_res) {
